@@ -1,127 +1,158 @@
-# J_Tracker_Checkboxes v.1.0.0
-# Jazlyn Cartaya, 2019
-# Add to menu.py
-# import nuke
+# J_Tracker_Checkboxes v.2.0.0
+# Jazlyn Cartaya, 2026
+
+
+import nuke
 
 
 def tracker_checkboxes_tab():
-    """This function creates a tab in the Tracker node that lets
-    the artist quickly select the amount of T, R, S Tracker
-    checkboxes they want to check."""
+    """This function creates a tab in the Tracker node that lets users
+    choose which Tracker checkboxes, T (translate), R (rotate), and S (scale),
+    to enable for all tracks or only the selected tracks."""
 
-    # Define Variables:
+    # Define variables
     node = nuke.thisNode()
 
-    # Create knobs:
+    # Check if UI has already been added
+    if node.knob('check_tracker_boxes'):
+        return
+
+    # Create knobs
     tab = nuke.Tab_Knob('Check Boxes')
-    number_of_trackers = nuke.String_Knob('number_of_trackers',
-                                          'number of trackers:',
-                                          'All'
-                                          )
-    number_of_trackers.setFlag(nuke.STARTLINE)
-    t_boolean_knob = nuke.Boolean_Knob('translate_box', 'translate', True)
-    r_boolean_knob = nuke.Boolean_Knob('rotate_box', 'rotate', True)
-    s_boolean_knob = nuke.Boolean_Knob('scale_box', 'scale', True)
-    pyknob = nuke.PyScript_Knob('check_tracker_boxes',
-                                'execute',
-                                'tracker_checkboxes()'
-                                )
+    
+    scope_knob = nuke.Enumeration_Knob('scope',
+                                       'apply to',
+                                       ['all tracks', 'selected tracks'])
+    scope_knob.setFlag(nuke.STARTLINE)
+
+    
+    t_boolean_knob = nuke.Boolean_Knob(
+        'translate_box',
+        'translate',
+        True
+        )
+    t_boolean_knob.setFlag(nuke.STARTLINE)
+
+    r_boolean_knob = nuke.Boolean_Knob(
+        'rotate_box',
+        'rotate',
+        True
+        )
+
+    s_boolean_knob = nuke.Boolean_Knob(
+        'scale_box',
+        'scale',
+        True
+        )
+    
+    pyknob = nuke.PyScript_Knob(
+        'check_tracker_boxes',
+        'execute',
+        'import nuke\nnuke.tracker_checkboxes()'
+        )
     pyknob.setFlag(nuke.STARTLINE)
 
-    # Add knobs:
+    # Add knobs
     node.addKnob(tab)
-    node.addKnob(number_of_trackers)
+    node.addKnob(scope_knob)
     node.addKnob(t_boolean_knob)
     node.addKnob(r_boolean_knob)
     node.addKnob(s_boolean_knob)
     node.addKnob(pyknob)
 
-nuke.addOnCreate(lambda: tracker_checkboxes_tab(), nodeClass='Tracker4')
 
-# Check boxes in 'Tracker' node:
+nuke.addOnCreate(tracker_checkboxes_tab, nodeClass='Tracker4')
 
 
 def tracker_checkboxes():
-    """This function checks all or x amount of T, R, and S
-    checkboxes in the Tracker node."""
+    """This function checks the T (translate), R (rotate), and S (scale)
+    checkboxes in the Tracker node for all tracks or the selected tracks."""
 
-    # Define variables:
-
-    selected_node = nuke.selectedNode()
-    knob = selected_node['tracks']
+    # Define variables
+    node = nuke.thisNode()
+    knob = node['tracks']
     num_columns = 31
     col_translate = 6
     col_rotate = 7
     col_scale = 8
-    count = 0
-    trackers_knobvalue = selected_node.knob('number_of_trackers').value()
-    translate_knobvalue = selected_node.knob('translate_box').value()
-    rotate_knobvalue = selected_node.knob('rotate_box').value()
-    scale_knobvalue = selected_node.knob('scale_box').value()
+    scope = node.knob('scope').value()
+    selected_only = (scope == 'selected tracks')
+    translate_knobvalue = bool(node.knob('translate_box').value())
+    rotate_knobvalue = bool(node.knob('rotate_box').value())
+    scale_knobvalue = bool(node.knob('scale_box').value())
 
-    # Put toScript in list:
+    # Get number of tracks from toScript
+    script = node['tracks'].toScript()
+    total_tracks = script.count('\"track ')
+    if total_tracks <= 0:
+        nuke.message('No tracks found on this Tracker node.')
+        return
 
-    trackers = []
-    script = selected_node['tracks'].toScript()
-    trackers.append(script)
+    # Set T, R, and S for a specific track index
+    def set_trs(track_index):
+        if translate_knobvalue is True:
+            knob.setValue(1, num_columns * track_index + col_translate)
+        else:
+            knob.setValue(0, num_columns * track_index + col_translate)
 
-    # Get number of tracks from list:
+        if rotate_knobvalue is True:
+            knob.setValue(1, num_columns * track_index + col_rotate)
+        else:
+            knob.setValue(0, num_columns * track_index + col_rotate)
 
-    for item in trackers:
-        total_tracks = item.count('\"track ')
-
-    # Check ALL boxes:
-
+        if scale_knobvalue is True:
+            knob.setValue(1, num_columns * track_index + col_scale)
+        else:
+            knob.setValue(0, num_columns * track_index + col_scale)
+            
     # Math = (True (1) or False (0), 31 columns * track number (0 to infinity)
     # + Translate (6), Rotate (7), or Scale (8))
 
-    if trackers_knobvalue == 'All':
-        while count <= int(total_tracks)-1:
+    # One-step undo
+    u = nuke.Undo()
+    u.begin('Tracker4: Set T, R, and S checkboxes')
+    try:
+        
+        # Selected tracks
+        if selected_only:
 
-            if all([translate_knobvalue, rotate_knobvalue, scale_knobvalue]):
-                knob.setValue(1, num_columns * count + col_translate)
-                knob.setValue(1, num_columns * count + col_rotate)
-                knob.setValue(1, num_columns * count + col_scale)
-            elif not any([translate_knobvalue,
-                          rotate_knobvalue,
-                          scale_knobvalue]):
-                knob.setValue(0, num_columns * count + col_translate)
-                knob.setValue(0, num_columns * count + col_rotate)
-                knob.setValue(0, num_columns * count + col_scale)
+            # Guard: selected_tracks API not available in this node/Nuke version 
+            if not node.knob('selected_tracks'):
+                nuke.message('This node does not have a knob called "selected_tracks".')
+                return
 
-            if translate_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_translate)
-            elif translate_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_translate)
+            # Guard: no tracks selected in the Tracker UI
+            sel = (node['selected_tracks'].value() or '').strip()
+            if not sel:
+                nuke.message('No tracks selected.')
+                return
 
-            if rotate_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_rotate)
-            elif rotate_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_rotate)
+            # Guard: selected_tracks string couldn't be parsed into integers
+            try:
+                idxs = [int(x) for x in sel.split(',') if x.strip() != '']
+            except ValueError:
+                nuke.message('Could not parse selected track indices.')
+                return
 
-            if scale_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_scale)
-            if scale_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_scale)
-            count += 1
+            # Guard: clamp to valid range of integers, avoid duplicates
+            idxs = sorted(set(i for i in idxs if 0 <= i < total_tracks))
+            if not idxs:
+                nuke.message('No valid selected tracks found.')
+                return
 
-    # Check x number of boxes:
+            # Apply checkbox settings to each selected track
+            for i in idxs:
+                set_trs(i)
 
-    if trackers_knobvalue != 'All':
-        while count <= int(trackers_knobvalue)-1:
+            return
 
-            if translate_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_translate)
-            elif translate_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_translate)
+        # All tracks
+        for i in range(total_tracks):
+            set_trs(i)
 
-            if rotate_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_rotate)
-            elif rotate_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_rotate)
+    finally:
+        u.end()
 
-            if scale_knobvalue is True:
-                knob.setValue(1, num_columns * count + col_scale)
-            elif scale_knobvalue is False:
-                knob.setValue(0, num_columns * count + col_scale)
-            count += 1
+
+# Add function to nuke module so PyScript_Knob can call it
+nuke.tracker_checkboxes = tracker_checkboxes
